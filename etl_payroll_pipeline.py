@@ -7,6 +7,7 @@ from boxsdk import OAuth2, Client
 # BOX AUTH (Client Credentials Grant)
 # ==========================
 
+
 client_id = os.environ["BOX_CLIENT_ID"]
 client_secret = os.environ["BOX_CLIENT_SECRET"]
 enterprise_id = os.environ["BOX_ENTERPRISE_ID"]
@@ -16,12 +17,15 @@ oauth = OAuth2(
     client_secret=client_secret,
 )
 
-# Request an enterprise-scoped access token
-access_token = oauth.authenticate_instance(enterprise_id)
+# Client Credentials Grant (enterprise auth)
+access_token = oauth.authenticate(
+    grant_type='client_credentials',
+    scope='enterprise',
+    box_enterprise_id=enterprise_id
+)
 
 client = Client(oauth)
 
-# Test connection
 me = client.user().get()
 print(f"Connected as: {me.name} ({me.login})")
 
