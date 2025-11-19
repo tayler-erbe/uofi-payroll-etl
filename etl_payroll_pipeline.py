@@ -13,17 +13,18 @@ from boxsdk import OAuth2, Client
 #     access_token=developer_token
 # )
 
+from boxsdk import Client, OAuth2
+
 auth = OAuth2(
     client_id=os.environ["BOX_CLIENT_ID"],
     client_secret=os.environ["BOX_CLIENT_SECRET"],
-    access_token=os.environ["BOX_DEVELOPER_TOKEN"]
+    enterprise_id=os.environ["BOX_ENTERPRISE_ID"],
 )
-
-
 client = Client(auth)
-user = client.user().get()
-print(f"Connected to Box as: {user.name} ({user.login})")
 
+# Test
+me = client.user().get()
+print(f"Connected as: {me.name}")
 
 # ============================================================
 # 2. RECURSIVE FILE LISTING
