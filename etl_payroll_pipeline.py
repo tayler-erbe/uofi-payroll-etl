@@ -752,7 +752,8 @@ csv_stream.seek(0)
 
 uploaded_csv = client.folder(box_folder_id).upload_stream(
     csv_stream,
-    cpa_csv_filename
+    cpa_csv_filename,
+    overwrite=True
 )
 
 print("\nCPA CSV uploaded successfully!")
@@ -768,7 +769,8 @@ xlsx_stream.seek(0)
 
 uploaded_xlsx = client.folder(box_folder_id).upload_stream(
     xlsx_stream,
-    cpa_xlsx_filename
+    cpa_xlsx_filename,
+    overwrite=True
 )
 
 print("\nCPA Excel uploaded successfully!")
