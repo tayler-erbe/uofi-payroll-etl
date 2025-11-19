@@ -3,28 +3,31 @@ import io
 import pandas as pd
 from boxsdk import OAuth2, Client
 
-# ============================================================
-# 1. AUTHENTICATE TO BOX
-# ============================================================
+import os
+from boxsdk import OAuth2, Client
 
-# auth = OAuth2(
-#     client_id=None,
-#     client_secret=None,
-#     access_token=developer_token
-# )
+# ==========================
+# BOX AUTH (Client Credentials Grant)
+# ==========================
 
-from boxsdk import Client, OAuth2
+client_id = os.environ["BOX_CLIENT_ID"]
+client_secret = os.environ["BOX_CLIENT_SECRET"]
+enterprise_id = os.environ["BOX_ENTERPRISE_ID"]
 
-auth = OAuth2(
-    client_id=os.environ["BOX_CLIENT_ID"],
-    client_secret=os.environ["BOX_CLIENT_SECRET"],
-    enterprise_id=os.environ["BOX_ENTERPRISE_ID"],
+oauth = OAuth2(
+    client_id=client_id,
+    client_secret=client_secret,
 )
-client = Client(auth)
 
-# Test
+# Request an enterprise-scoped access token
+access_token = oauth.authenticate_instance(enterprise_id)
+
+client = Client(oauth)
+
+# Test connection
 me = client.user().get()
-print(f"Connected as: {me.name}")
+print(f"Connected as: {me.name} ({me.login})")
+
 
 # ============================================================
 # 2. RECURSIVE FILE LISTING
