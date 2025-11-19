@@ -3,9 +3,6 @@ import io
 import pandas as pd
 from boxsdk import OAuth2, Client
 
-import os
-from boxsdk import OAuth2, Client
-
 # ==========================
 # BOX AUTH (Client Credentials Grant)
 # ==========================
