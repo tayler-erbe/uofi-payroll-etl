@@ -1,4 +1,4 @@
 pandas
 openpyxl
-boxsdk
+boxsdk==3.6.0
 python-dateutil
