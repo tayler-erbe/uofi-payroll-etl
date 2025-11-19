@@ -1,7 +1,8 @@
-boxsdk==3.9.0
+boxsdk==4.0.2
+urllib3<2
+requests<3
 pandas
 openpyxl
 python-dateutil
-requests==2.32.5
-urllib3==1.26.20
-requests-toolbelt==1.0.0
+
+
