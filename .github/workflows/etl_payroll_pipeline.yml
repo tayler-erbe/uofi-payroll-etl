@@ -13,20 +13,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.9   # IMPORTANT FIX FOR INSTALLING BOXSDK
+      - name: Set up Python 3.9
         uses: actions/setup-python@v5
         with:
-          python-version: "3.9" # IMPORTANT FIX FOR INSTALLING BOXSDK
+          python-version: "3.9"
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run ETL script
+      - name: Run ETL script (with Box CCG)
         env:
           BOX_CLIENT_ID: ${{ secrets.BOX_CLIENT_ID }}
           BOX_CLIENT_SECRET: ${{ secrets.BOX_CLIENT_SECRET }}
-          BOX_DEVELOPER_TOKEN: ${{ secrets.BOX_DEVELOPER_TOKEN }}
+          BOX_ENTERPRISE_ID: ${{ secrets.BOX_ENTERPRISE_ID }}
         run: |
           python etl_payroll_pipeline.py
