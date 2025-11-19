@@ -418,7 +418,8 @@ from datetime import datetime
 # ============================================================
 # Generate date string for filenames
 # ============================================================
-date_str = datetime.now().strftime("%m%d%Y")   # MMDDYYYY
+
+date_str = datetime.now().strftime("%m%d%Y_%H%M")   # MMDDYYYY_HHMM
 
 # Box folder where output should go
 box_folder_id = "351818509913"
