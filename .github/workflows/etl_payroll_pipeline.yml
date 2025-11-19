@@ -10,24 +10,35 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # -------------------------------------------------------
+      # 1. Checkout repo
+      # -------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # -------------------------------------------------------
+      # 2. Python setup
+      # -------------------------------------------------------
       - name: Set up Python 3.9
         uses: actions/setup-python@v5
         with:
           python-version: "3.9"
 
+      # -------------------------------------------------------
+      # 3. Install dependencies
+      #
+      #    MUST install boxsdk>=4.0.0 BEFORE requirements.txt
+      #    because requirements.txt originally forces 3.6.x.
+      # -------------------------------------------------------
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install --force-reinstall --no-cache-dir -r requirements.txt
+          pip install "boxsdk>=4.0.0" "urllib3<2" "requests<3"
+          pip install -r requirements.txt
 
-      - name: Verify environment (optional)
-        run: |
-          python --version
-          pip freeze
-
+      # -------------------------------------------------------
+      # 4. Run ETL script with Box CCG environment variables
+      # -------------------------------------------------------
       - name: Run ETL script
         env:
           BOX_CLIENT_ID: ${{ secrets.BOX_CLIENT_ID }}
