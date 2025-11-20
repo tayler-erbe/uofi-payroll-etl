@@ -1,7 +1,8 @@
 import os
 import io
 import pandas as pd
-from boxsdk import OAuth2, Client
+from boxsdk import Client
+from boxsdk.auth.ccg_auth import CCGAuth
 
 # ==========================
 # BOX AUTH (Client Credentials Grant)
@@ -10,18 +11,19 @@ from boxsdk import OAuth2, Client
 client_id = os.environ["BOX_CLIENT_ID"]
 client_secret = os.environ["BOX_CLIENT_SECRET"]
 
-oauth = OAuth2(
+auth = CCGAuth(
     client_id=client_id,
     client_secret=client_secret,
 )
 
-# Correct authentication for boxsdk==4.1.0
-access_token = oauth.authenticate_instance()
+# OPTIONAL: Trigger token request 
+auth.authenticate_instance()
 
-client = Client(oauth)
+client = Client(auth)
 
 me = client.user().get()
 print(f"Connected as: {me.name} ({me.login})")
+
 
 # ============================================================
 # 2. RECURSIVE FILE LISTING
