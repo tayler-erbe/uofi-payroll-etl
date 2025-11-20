@@ -7,9 +7,6 @@ from boxsdk import OAuth2, Client
 # BOX AUTH (Client Credentials Grant)
 # ==========================
 
-from boxsdk import OAuth2, Client
-import os
-
 client_id = os.environ["BOX_CLIENT_ID"]
 client_secret = os.environ["BOX_CLIENT_SECRET"]
 enterprise_id = os.environ["BOX_ENTERPRISE_ID"]
