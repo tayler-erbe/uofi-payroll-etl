@@ -14,11 +14,9 @@ client_secret = os.environ["BOX_CLIENT_SECRET"]
 auth = CCGAuth(
     client_id=client_id,
     client_secret=client_secret,
+    enterprise_id=enterprise_id
 )
-
-# OPTIONAL: Trigger token request 
 auth.authenticate_instance()
-
 client = Client(auth)
 
 me = client.user().get()
