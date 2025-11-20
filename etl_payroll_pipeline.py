@@ -15,16 +15,8 @@ oauth = OAuth2(
     client_secret=client_secret,
 )
 
-# Client Credentials Grant
-auth_response = oauth.authenticate(
-    'client_credentials',
-    None,
-    None,
-    scope='enterprise',
-    box_enterprise_id=enterprise_id
-)
-
-access_token = auth_response.access_token
+# Correct authentication for boxsdk==4.1.0
+access_token = oauth.authenticate_instance()
 
 client = Client(oauth)
 
