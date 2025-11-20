@@ -9,7 +9,6 @@ from boxsdk import OAuth2, Client
 
 client_id = os.environ["BOX_CLIENT_ID"]
 client_secret = os.environ["BOX_CLIENT_SECRET"]
-enterprise_id = os.environ["BOX_ENTERPRISE_ID"]
 
 oauth = OAuth2(
     client_id=client_id,
