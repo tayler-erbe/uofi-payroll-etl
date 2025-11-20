@@ -7,25 +7,33 @@ from boxsdk import OAuth2, Client
 # BOX AUTH (Client Credentials Grant)
 # ==========================
 
+from boxsdk import OAuth2, Client
+import os
+
 client_id = os.environ["BOX_CLIENT_ID"]
 client_secret = os.environ["BOX_CLIENT_SECRET"]
 enterprise_id = os.environ["BOX_ENTERPRISE_ID"]
 
 oauth = OAuth2(
     client_id=client_id,
-    client_secret=client_secret
+    client_secret=client_secret,
 )
 
-# Enterprise token
-access_token = oauth.get_access_token_for_enterprise(enterprise_id)
+# Client Credentials Grant
+auth_response = oauth.authenticate(
+    'client_credentials',
+    None,
+    None,
+    scope='enterprise',
+    box_enterprise_id=enterprise_id
+)
+
+access_token = auth_response.access_token
 
 client = Client(oauth)
 
 me = client.user().get()
 print(f"Connected as: {me.name} ({me.login})")
-
-
-
 
 # ============================================================
 # 2. RECURSIVE FILE LISTING
