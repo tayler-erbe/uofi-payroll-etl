@@ -13,18 +13,17 @@ enterprise_id = os.environ["BOX_ENTERPRISE_ID"]
 
 oauth = OAuth2(
     client_id=client_id,
-    client_secret=client_secret,
+    client_secret=client_secret
 )
 
-access_token = oauth.authenticate(
-    'client_credentials',
-    enterprise_id
-)
+# Enterprise token
+access_token = oauth.get_access_token_for_enterprise(enterprise_id)
 
 client = Client(oauth)
 
 me = client.user().get()
 print(f"Connected as: {me.name} ({me.login})")
+
 
 
 
