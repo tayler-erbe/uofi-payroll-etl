@@ -193,35 +193,37 @@ print("BW Cert:", "Loaded" if df_cert_bw is not None else "Missing")
 print("MN Cert:", "Loaded" if df_cert_mn is not None else "Missing")
 print("==================================\n")
 
-# ====== PUA ETL → PreTAM output ======
-import os
+
+# ============================================================
+# ===== BEGIN PUA ETL LOGIC ==================================
+# ============================================================
+
 import re
-import pandas as pd
 from collections import OrderedDict
 
-# ----------------------------
-# Utilities
-# ----------------------------
+
 def clean_column_names(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = df.columns.str.strip()
     return df
 
+
 def strip_decimal_str(series: pd.Series) -> pd.Series:
-    """Remove trailing '.0' from numeric-looking codes represented as strings."""
     s = series.astype(str).str.strip()
     return s.str.replace(r'\.0$', '', regex=True)
+
 
 def mode_map(series: pd.Series) -> str:
     m = series.mode()
     return m.iat[0] if not m.empty else series.iloc[0]
+
 
 def ensure_string(df: pd.DataFrame, cols) -> None:
     for c in cols:
         if c in df.columns:
             df[c] = df[c].astype("string").str.strip()
 
+
 def safe_merge_left(df_left, df_right, **kwargs):
-    """Left merge that keeps left row count; useful in sanity checks."""
     before = len(df_left)
     merged = df_left.merge(df_right, how='left', **kwargs)
     after = len(merged)
@@ -229,45 +231,28 @@ def safe_merge_left(df_left, df_right, **kwargs):
         print(f"[warn] merge rowcount changed: {before} → {after}")
     return merged
 
-# # ----------------------------
-# # Normalize all column headers
-# # ----------------------------
-# for _df in [df_cpa_2025, df_pua_2025, df_pua_ytd, df_cert_bw, df_cert_mn,
-#             df_overtime_eclass, df_feeder_list, df_ts_dept, df_ts_org, df_te_m]:
-#     clean_column_names(_df)
 
-# ----------------------------
-# PUA working copy
-# ----------------------------
-df = pua_df .copy()
+df = pua_df.copy()
 
-# --- Derived fields & cleaning ---
-# TS-Org Code = TS COA + '-' + TS ORG
+# Derived fields
 ensure_string(df, ['TS COA', 'TS ORG'])
 df['TS-Org Code'] = df['TS COA'] + '-' + df['TS ORG']
-# Ensure DEPT Code is string without '.0'
+
 df['DEPT Code'] = strip_decimal_str(df['DEPT Code'])
-# TS-Org Department Code = TS COA + '-' + DEPT Code
 df['TS-Org Department Code'] = df['TS COA'] + '-' + df['DEPT Code']
-# Department Name (keep original)
 ensure_string(df, ['Department Name'])
-# ECLS DESC → E-Class (for intermediate use; PreTAM final uses “E-Class” as description column)
 df['E-Class'] = df['ECLS DESC'].astype(str).str.strip()
 
-# Pay Event parts
 ensure_string(df, ['Year', 'Pay ID', 'Pay #', 'Seq #'])
 df['Pay Event'] = df['Year'] + df['Pay ID'] + df['Pay #'] + df['Seq #']
 
-# Job Number = POSN + '-' + SUFF (strip '.0')
 df['POSN'] = strip_decimal_str(df['POSN'])
 df['SUFF'] = strip_decimal_str(df['SUFF'])
 df['Job Number'] = df['POSN'] + '-' + df['SUFF']
 
-# College = College Code + '-' + College Name
 ensure_string(df, ['College Code', 'College Name'])
 df['College'] = df['College Code'] + '-' + df['College Name']
 
-# Normalize adjustment reason column names (handle variants)
 df.rename(columns={
     'ADj Reason Code': 'ADJ Reason Code',
     'ADJ Reason DESC': 'ADJ Reason DESC',
@@ -275,12 +260,9 @@ df.rename(columns={
     'Adj Reason': 'ADJ Reason DESC'
 }, inplace=True)
 
-# --- Lookups ---
-# TS-Org Title from TS-Org Code
 org_keep = df_ts_org[['TS-Org Code', 'TS-Org Title']].drop_duplicates()
 df = safe_merge_left(df, org_keep, on='TS-Org Code')
 
-# TS-Org Dept Title from TS-Org Dept Code; fallback to Department Name when missing
 dept_keep = df_ts_dept[['TS-Org Dept Code', 'TS-Org Dept Title']].drop_duplicates()
 df = safe_merge_left(
     df,
@@ -291,13 +273,12 @@ df = safe_merge_left(
 df['TS-Org Dept Title'] = df['TS-Org Dept Title'].astype('string')
 df['TS-Org Dept Title'] = df['TS-Org Dept Title'].fillna(df['Department Name'])
 
-# Overtime via ECLS mapping
 ot_keep = df_overtime_eclass[['Job Eclass', 'Overtime FLSA']].drop_duplicates()
 df = safe_merge_left(df, ot_keep, left_on='ECLS', right_on='Job Eclass')
 df.rename(columns={'Overtime FLSA': 'Overtime'}, inplace=True)
 df.drop(columns=['Job Eclass'], errors='ignore', inplace=True)
 
-# Time Entry via TE M (mode per code)
+
 te = (
     df_te_m[['TE M', 'Time Entry Method']]
       .dropna(subset=['TE M', 'Time Entry Method'])
@@ -307,13 +288,16 @@ te = (
       })
 )
 te_map = te.groupby('TE M')['Time Entry Method'].agg(mode_map).to_dict()
+
 df['TE M'] = df['TE M'].astype(str).str.strip()
 df['Time Entry'] = df.get('Time Entry', pd.Series(pd.NA, index=df.index, dtype='string'))
-df['Time Entry'] = df['Time Entry'].astype('string').str.strip()
-mapped_time_entry = df['TE M'].map(te_map).astype('string')
-df['Time Entry'] = df['Time Entry'].where(df['Time Entry'].notna() & (df['Time Entry'] != ''), mapped_time_entry)
 
-# --- Final column selection (keep sources needed to build PreTAM layout) ---
+mapped_time_entry = df['TE M'].map(te_map).astype('string')
+df['Time Entry'] = df['Time Entry'].where(
+    df['Time Entry'].notna() & (df['Time Entry'] != ''),
+    mapped_time_entry
+)
+
 source_fields = [
     'UIN', 'Pay ID', 'Year', 'Pay #', 'Seq #', 'Job Number',
     'College Code', 'College Name', 'College',
@@ -323,32 +307,26 @@ source_fields = [
     'Earn Code', 'DESCRIPTION', 'ADJ Reason Code', 'ADJ Reason DESC',
     'Calc Date', 'Pay Event', 'POSN', 'SUFF'
 ]
+
 source_fields = [c for c in source_fields if c in df.columns]
 df_fin = df[source_fields].copy()
 
-# Deduplicate (business key)
 for k in ['UIN', 'Pay Event', 'Job Number']:
     if k not in df_fin.columns:
         print(f"[warn] missing key for dedupe: {k}")
 df_fin = df_fin.drop_duplicates(subset=[c for c in ['UIN', 'Pay Event', 'Job Number'] if c in df_fin.columns])
 
-# Types
-# Strings (leave Calc Date as datetime)
 string_cols = [c for c in df_fin.columns if c != 'Calc Date']
 ensure_string(df_fin, string_cols)
 if 'Calc Date' in df_fin.columns:
     df_fin['Calc Date'] = pd.to_datetime(df_fin['Calc Date'], errors='coerce')
 
-# Fill missing Adjustment Reason as INT/Internal
 if 'ADJ Reason Code' in df_fin.columns:
     mask = df_fin['ADJ Reason Code'].isna() | (df_fin['ADJ Reason Code'].astype(str).str.strip().isin(['', 'nan', 'NaN']))
     df_fin.loc[mask, 'ADJ Reason Code'] = 'INT'
     if 'ADJ Reason DESC' in df_fin.columns:
         df_fin.loc[mask, 'ADJ Reason DESC'] = 'Internal'
 
-# ----------------------------
-# Build PreTAM-style output (names & order)
-# ----------------------------
 col_map = OrderedDict([
     ("UIN",                         "UIN"),
     ("Pay ID",                      "Pay ID"),
@@ -360,14 +338,14 @@ col_map = OrderedDict([
     ("College Name",                "College Name"),
     ("College",                     "College"),
     ("TS COA",                      "TS COA"),
-    ("TS Org",                      "TS ORG"),                 # PreTAM header w/ space
+    ("TS Org",                      "TS ORG"),
     ("TS-Org Code",                 "TS-Org Code"),
     ("TS-Org Title",                "TS-Org Title"),
-    ("Dept Code",                   "DEPT Code"),              # PreTAM header “Dept Code”
+    ("Dept Code",                   "DEPT Code"),
     ("TS-Org Dept Code",            "TS-Org Dept Code"),
     ("TS-Org Dept Title",           "TS-Org Dept Title"),
-    ("E-Class Code",                "ECLS"),                   # code
-    ("E-Class",                     "ECLS DESC"),              # description
+    ("E-Class Code",                "ECLS"),
+    ("E-Class",                     "ECLS DESC"),
     ("TE M",                        "TE M"),
     ("Time Entry",                  "Time Entry"),
     ("Overtime",                    "Overtime"),
@@ -389,20 +367,12 @@ for out_name, src in col_map.items():
 
 pua_out = pd.DataFrame(out_cols)
 
-# Ensure final dtypes (strings except Calc Date)
 for c in pua_out.columns:
     if c != "Calc Date":
         pua_out[c] = pua_out[c].astype("string").str.strip()
 if "Calc Date" in pua_out.columns:
     pua_out["Calc Date"] = pd.to_datetime(pua_out["Calc Date"], errors="coerce")
 
-# ----------------------------
-# Harmonize headers + Save
-# ----------------------------
-import os
-import pandas as pd
-
-# 1) Rename to  header names BEFORE save
 rename_map = {
     "TS Org": "TS ORG",
     "Adjustment Reason": "Adjustment Reason Description",
@@ -410,42 +380,33 @@ rename_map = {
 pua_out.rename(columns=rename_map, inplace=True)
 
 
-
-import io
+# ============================================================
+#  SAVE PUA OUTPUTS TO BOX
+# ============================================================
 from datetime import datetime
 
-# ============================================================
-# Generate date string for filenames
-# ============================================================
+date_str = datetime.now().strftime("%m%d%Y_%H%M")
 
-date_str = datetime.now().strftime("%m%d%Y_%H%M")   # MMDDYYYY_HHMM
-
-# Box folder where output should go
 box_folder_id = "351818509913"
 
-# Filenames with automatically injected date string
 csv_filename  = f"2025_PUA_Data_csv_{date_str}.csv"
 xlsx_filename = f"2025_PUA_Data_excel_{date_str}.xlsx"
 
-# ============================================================
-# Save CSV directly to Box
-# ============================================================
+# --- Save CSV ---
 csv_stream = io.BytesIO()
 pua_out.to_csv(csv_stream, index=False, encoding="utf-8")
 csv_stream.seek(0)
 
 uploaded_csv = client.folder(box_folder_id).upload_stream(
-    file_stream,
-    new_file_name
+    csv_stream,
+    csv_filename
 )
 
 print("\nCSV uploaded successfully!")
 print(f"  File: {uploaded_csv.name}")
 print(f"  ID:   {uploaded_csv.id}")
 
-# ============================================================
-# Save Excel directly to Box
-# ============================================================
+# --- Save Excel ---
 xlsx_stream = io.BytesIO()
 pua_out.to_excel(xlsx_stream, index=False, engine="openpyxl")
 xlsx_stream.seek(0)
@@ -459,51 +420,40 @@ print("\nExcel uploaded successfully!")
 print(f"  File: {uploaded_xlsx.name}")
 print(f"  ID:   {uploaded_xlsx.id}")
 
-# ============================================================
-# Summary
-# ============================================================
 print("\n--- SAVE SUMMARY ---")
 print("Rows saved:", len(pua_out))
 print("Date stamp:", date_str)
 print("Uploaded to Box folder:", box_folder_id)
 
 
-# Standardize column names (remove leading/trailing spaces)
+# ============================================================
+#  CPA PROCESSING
+# ============================================================
+
 df_cert_bw.columns = df_cert_bw.columns.str.strip()
 df_cert_mn.columns = df_cert_mn.columns.str.strip()
 
-# Combine both CPA files into one unified DataFrame
 df_cpa_combined = pd.concat([df_cert_bw, df_cert_mn], ignore_index=True)
 
-# Step 1: Parse date column
 df_cpa_combined['TRAN_CREATE_DT'] = pd.to_datetime(df_cpa_combined['TRAN_CREATE_DT'], errors='coerce')
-# Step 2: Inspect actual data range
+
 min_date = df_cpa_combined['TRAN_CREATE_DT'].min()
 max_date = df_cpa_combined['TRAN_CREATE_DT'].max()
-# Step 3: Define fiscal year window based on *calendar year*, not current month
+
 today = datetime.today()
 current_year = today.year
-# Always use July 1 (previous year) to June 30 (current year)
+
 fy_start = datetime(current_year - 1, 7, 1)
 fy_end = datetime(current_year, 6, 30)
 
-# print(f"Filtering data for fiscal year: {fy_start.date()} to {fy_end.date()}")
-
-# Step 4: Validate oldest record
-if min_date < fy_start.replace(year=fy_start.year - 1):
-    raise ValueError(
-        f"⚠️ ERROR: Oldest transaction date ({min_date.date()}) is more than one fiscal year before the current fiscal year. "
-        "This may indicate outdated or unexpected data."
-    )
-
-# Step 5: Apply filter
 df_cpa_fy = df_cpa_combined[
     (df_cpa_combined['TRAN_CREATE_DT'] >= fy_start) &
     (df_cpa_combined['TRAN_CREATE_DT'] <= fy_end)
 ]
 
-# print(f"✅ Filtered CPA data: {len(df_cpa_fy)} rows remain in fiscal year window.")
-# Define expected raw columns from the documentation
+print("CPA: Filtered fiscal year rows:", len(df_cpa_fy))
+
+# Standard columns
 expected_columns = [
     'UIN', 'PAY_YEAR', 'PAY_ID', 'PAY_NBR', 'PAY_SEQ', 'TRAN_ID', 'TRAN_COMPNT', 'ADJ_REASON',
     'TRAN_CREATE_DT', 'TRAN_CLOSED_DT', 'JOB', 'JOB_TITLE', 'JOB_TS_COAS', 'JOB_TS_ORGN',
@@ -513,64 +463,20 @@ expected_columns = [
     'ROUTE_STOP_TIME', 'ELAPSED_TRAN_TIME'
 ]
 
-# Strip spaces from current df columns just in case
 actual_columns = df_cpa_fy.columns.str.strip().tolist()
 
-# Check if columns match exactly (same order and values)
 if actual_columns == expected_columns:
-    print("✅ Column check passed: Columns in df_cpa_fy match expected raw columns.")
+    print("CPA columns match expected structure.")
 else:
-    print("❌ Column mismatch detected:")
-    
-    # Show which columns are missing or extra
-    missing = set(expected_columns) - set(actual_columns)
-    extra   = set(actual_columns) - set(expected_columns)
+    print("CPA column mismatch detected.")
 
-    if missing:
-        print(f"  - Missing columns: {sorted(missing)}")
-    if extra:
-        print(f"  - Unexpected/extra columns: {sorted(extra)}")
-
-    # Optionally, show side-by-side mismatch if lengths are equal but order is wrong
-    if len(actual_columns) == len(expected_columns):
-        print("\n🔍 Comparing column order:")
-        for i, (act, exp) in enumerate(zip(actual_columns, expected_columns)):
-            if act != exp:
-                print(f"  Position {i}: expected '{exp}', found '{act}'")
-
-                
-# 1. Create 'TS-Org Code' = JOB_TS_COAS + "-" + JOB_TS_ORGN
 df_cpa_fy['TS-Org Code'] = df_cpa_fy['JOB_TS_COAS'].astype(str).str.strip() + '-' + df_cpa_fy['JOB_TS_ORGN'].astype(str).str.strip()
-
-# 2. Create 'Dept TS-Org' = first 5 characters of TS-Org Code
 df_cpa_fy['Dept TS-Org'] = df_cpa_fy['TS-Org Code'].str[:5]
-
-# Define format patterns
-pattern_ts_org_code = r'^\d-\d{6}$'
-pattern_dept_ts_org = r'^\d-\d{3}$'
-
-# Check each column for non-matching values
-invalid_ts_org_code = df_cpa_fy[~df_cpa_fy['TS-Org Code'].str.match(pattern_ts_org_code)]
-invalid_dept_ts_org = df_cpa_fy[~df_cpa_fy['Dept TS-Org'].str.match(pattern_dept_ts_org)]
-
-# Report results
-if len(invalid_ts_org_code) == 0 and len(invalid_dept_ts_org) == 0:
-    print("✅ All derived fields match expected format.")
-else:
-    if len(invalid_ts_org_code) > 0:
-        print(f"❌ TS-Org Code format issue in {len(invalid_ts_org_code)} rows.")
-        print(invalid_ts_org_code[['JOB_TS_COAS', 'JOB_TS_ORGN', 'TS-Org Code']].head())
-
-    if len(invalid_dept_ts_org) > 0:
-        print(f"❌ Dept TS-Org format issue in {len(invalid_dept_ts_org)} rows.")
-        print(invalid_dept_ts_org[['TS-Org Code', 'Dept TS-Org']].head())
-
 
 df_cpa_fy = df_cpa_fy.apply(
     lambda col: col.astype(str).str.strip() if col.dtype == "object" else col
 )
 
-# Standardize key columns
 df_cpa_fy['JOB_ECLS'] = df_cpa_fy['JOB_ECLS'].astype(str).str.strip()
 df_cpa_fy['PAY_ID']   = df_cpa_fy['PAY_ID'].astype(str).str.strip()
 df_cpa_fy['UIN Job'] = df_cpa_fy['UIN'].astype(str).str.strip() + '-' + df_cpa_fy['JOB'].astype(str).str.strip()
@@ -578,8 +484,6 @@ df_cpa_fy['UIN Job'] = df_cpa_fy['UIN'].astype(str).str.strip() + '-' + df_cpa_f
 df_overtime_eclass['Job Eclass'] = df_overtime_eclass['Job Eclass'].astype(str).str.strip()
 df_overtime_eclass['Pay ID']     = df_overtime_eclass['Pay ID'].astype(str).str.strip()
 
-
-# === Merge TS-Org Name ===
 df_cpa_fy = df_cpa_fy.merge(
     df_ts_org[['TS-Org Code', 'TS-Org Title']].drop_duplicates(),
     on='TS-Org Code',
@@ -587,7 +491,6 @@ df_cpa_fy = df_cpa_fy.merge(
 )
 df_cpa_fy = df_cpa_fy.rename(columns={'TS-Org Title': 'TS-Org Name'})
 
-# === Merge TS-Org Department Name ===
 df_cpa_fy = df_cpa_fy.merge(
     df_ts_dept[['TS-Org Dept Code', 'TS-Org Dept Title']].drop_duplicates(),
     left_on='Dept TS-Org',
@@ -596,9 +499,6 @@ df_cpa_fy = df_cpa_fy.merge(
 )
 df_cpa_fy = df_cpa_fy.rename(columns={'TS-Org Dept Title': 'TS-Org Department Name'})
 
-# ===== TE M → Time Entry (canonical creation: do ONCE, at the end) =====
-
-# Build a robust TE M -> Time Entry Method mapping by mode per code
 temp_te = (
     df_te_m.loc[:, ["TE M", "Time Entry Method"]]
            .dropna(subset=["TE M", "Time Entry Method"])
@@ -608,7 +508,6 @@ temp_te = (
            })
 )
 
-# === Merge TE M (Time Entry Method / Type) ===
 df_cpa_fy = df_cpa_fy.merge(
     df_te_m[['UIN Job', 'TE M', 'Time Entry Method', 'Time Entry Type']].drop_duplicates(),
     on='UIN Job',
@@ -621,7 +520,6 @@ te_mapping = (
            .to_dict()
 )
 
-# Standardize TE M; create Time Entry once and only once here
 df_cpa_fy['TE M'] = df_cpa_fy['TE M'].astype(str).str.strip()
 existing_time_entry = (
     df_cpa_fy['Time Entry'].astype('string').str.strip()
@@ -634,65 +532,23 @@ df_cpa_fy['Time Entry'] = existing_time_entry.where(
     mapped_time_entry
 )
 
-# === Merge Overtime FLSA and E-Class Description ===
 df_cpa_fy = df_cpa_fy.merge(
     df_overtime_eclass[['Job Eclass', 'Pay ID', 'Overtime FLSA', 'Job Detail E-Class Long Desc']].drop_duplicates(),
     left_on=['JOB_ECLS', 'PAY_ID'],
     right_on=['Job Eclass', 'Pay ID'],
     how='left'
 )
-
-# === Rename for clarity ===
 df_cpa_fy = df_cpa_fy.rename(columns={
     'Job Detail E-Class Long Desc': 'E-Class Description'
 })
 
-
 df_cpa_fy = df_cpa_fy[df_cpa_fy["ACTION"] == "3 - Apply"]
 df_cpa_fy = df_cpa_fy.drop_duplicates()
 df_cpa_fy = df_cpa_fy.drop_duplicates(subset=["UIN Job"], keep="first")
-# Step 1: Strip leading/trailing whitespace from column names
-df_cpa_fy.columns = df_cpa_fy.columns.str.strip()
 
-# Step 2: Coerce all columns into cleaned strings
-for col in df_cpa_fy.columns:
-    # Convert float-looking strings to integers if possible
-    # e.g., "123.0" → "123"
-    df_cpa_fy[col] = (
-        df_cpa_fy[col]
-        .apply(lambda x: int(float(x)) if pd.notna(x) and str(x).strip().replace('.', '', 1).isdigit() and float(x).is_integer() else x)
-        .astype(str)               # Ensure string
-        .str.strip()               # Strip whitespace
-        .str.replace(r'\.0$', '', regex=True)  # Remove lingering .0
-    )
-    
-# Force conversion to datetime
-df_cpa_fy['TRAN_CREATE_DT'] = pd.to_datetime(df_cpa_fy['TRAN_CREATE_DT'], errors='coerce')
-# Optional: Check for any invalid entries that became NaT
-invalid_dates = df_cpa_fy['TRAN_CREATE_DT'].isna().sum()
-# Force conversion to datetime
-df_cpa_fy['TRAN_CLOSED_DT'] = pd.to_datetime(df_cpa_fy['TRAN_CLOSED_DT'], errors='coerce')
-# Optional: Check for any invalid entries that were coerced to NaT
-invalid_closed_dates = df_cpa_fy['TRAN_CLOSED_DT'].isna().sum()
+df_cpa_fy['College Code'] = df_cpa_fy['COLLEGE'].astype(str).str.split("-").str[0].str.strip()
+df_cpa_fy['College Name'] = df_cpa_fy['COLLEGE'].astype(str).str.split("-",1).str[1].str.strip()
 
-df_cpa_fy = df_cpa_fy.drop_duplicates()
-# Remove duplicates based on TRAN_ID
-df_cpa_fy = df_cpa_fy.drop_duplicates(subset='TRAN_ID')
-
-df_cpa_fy.reset_index()
-college_code = []
-college_name = []
-
-for val in df_cpa_fy["COLLEGE"].astype(str):
-    parts = val.split("-", 1)
-    college_code.append(parts[0].strip())
-    college_name.append(parts[1].strip() if len(parts) > 1 else None)
-df_cpa_fy["College Code"] = college_code
-df_cpa_fy["College Name"] = college_name
-
-
-
-# Rename columns
 df_cpa_fy.rename(columns={
     'UIN':'UIN',
     "PAY_ID": "Pay ID",
@@ -716,71 +572,59 @@ df_cpa_fy.rename(columns={
     "Overtime FLSA":"Overtime"
 }, inplace=True)
 
-# Select only the 20 required columns and overwrite df_cpa_final
 df_cpa_fy = df_cpa_fy[['UIN', 'Pay ID', 'Year', 'Pay #', 'Seq #', 'Job Number', 'College Code',
        'College Name', 'College', 'TS COA', 'TS Org', 'TS-Org Code',
        'TS-Org Title', 'TS-Org Dept Code', 'TS-Org Dept Title', 'E-Class Code',
        'E-Class', 'TE M', 'Time Entry', 'Overtime']]
 
-
 df_cpa_fy = df_cpa_fy.loc[:, ~df_cpa_fy.columns.duplicated()]
 
 
-import io
-from datetime import datetime
-
 # ============================================================
-# 1. Generate date string
+#  SAVE CPA OUTPUTS TO BOX
 # ============================================================
-date_str = datetime.now().strftime("%m%d%Y")   # MMDDYYYY
 
-# Box folder for CPA output
+date_str = datetime.now().strftime("%m%d%Y")
+
 box_folder_id = "351818509913"
 
-# ============================================================
-# 2. Build filenames (distinct for CSV and XLSX)
-# ============================================================
 cpa_csv_filename  = f"2025_CPA_Data_csv_{date_str}.csv"
 cpa_xlsx_filename = f"2025_CPA_Data_excel_{date_str}.xlsx"
 
-# ============================================================
-# 3. Upload CPA CSV to Box
-# ============================================================
+# --- Save CPA CSV ---
 csv_stream = io.BytesIO()
 df_cpa_fy.to_csv(csv_stream, index=False, encoding="utf-8")
 csv_stream.seek(0)
 
 uploaded_csv = client.folder(box_folder_id).upload_stream(
-    file_stream,
-    new_file_name
+    csv_stream,
+    cpa_csv_filename
 )
-
 
 print("\nCPA CSV uploaded successfully!")
 print(f"  File: {uploaded_csv.name}")
 print(f"  ID:   {uploaded_csv.id}")
 
-# ============================================================
-# 4. Upload CPA Excel to Box
-# ============================================================
+# --- Save CPA Excel ---
 xlsx_stream = io.BytesIO()
 df_cpa_fy.to_excel(xlsx_stream, index=False, engine="openpyxl")
 xlsx_stream.seek(0)
 
 uploaded_xlsx = client.folder(box_folder_id).upload_stream(
     xlsx_stream,
-    cpa_xlsx_filename,
-    overwrite=True
+    cpa_xlsx_filename
 )
 
 print("\nCPA Excel uploaded successfully!")
 print(f"  File: {uploaded_xlsx.name}")
 print(f"  ID:   {uploaded_xlsx.id}")
 
+
 # ============================================================
-# 5. Final summary
+#  FINAL SUMMARY
 # ============================================================
 print("\n--- CPA SAVE SUMMARY ---")
 print("Rows saved:", len(df_cpa_fy))
 print("Date stamp:", date_str)
 print("Uploaded to Box folder:", box_folder_id)
+
