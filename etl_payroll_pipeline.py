@@ -546,8 +546,19 @@ df_cpa_fy = df_cpa_fy[df_cpa_fy["ACTION"] == "3 - Apply"]
 df_cpa_fy = df_cpa_fy.drop_duplicates()
 df_cpa_fy = df_cpa_fy.drop_duplicates(subset=["UIN Job"], keep="first")
 
-df_cpa_fy['College Code'] = df_cpa_fy['COLLEGE'].astype(str).str.split("-").str[0].str.strip()
-df_cpa_fy['College Name'] = df_cpa_fy['COLLEGE'].astype(str).str.split("-",1).str[1].str.strip()
+# Fix: Split COLLEGE into College Code and College Name safely
+college_split = df_cpa_fy['COLLEGE'].astype(str).str.split("-", n=1, expand=True)
+
+df_cpa_fy['College Code'] = college_split[0].str.strip()
+
+# Some rows do not have a hyphen, so expand=True creates only one column.
+# Protect against missing second column:
+df_cpa_fy['College Name'] = (
+    college_split[1].str.strip()
+    if 1 in college_split.columns
+    else ""
+)
+
 
 df_cpa_fy.rename(columns={
     'UIN':'UIN',
