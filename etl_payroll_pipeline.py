@@ -435,8 +435,8 @@ pua_out.to_csv(csv_stream, index=False, encoding="utf-8")
 csv_stream.seek(0)
 
 uploaded_csv = client.folder(box_folder_id).upload_stream(
-    csv_stream,
-    csv_filename
+    file_stream,
+    new_file_name
 )
 
 print("\nCSV uploaded successfully!")
@@ -751,10 +751,10 @@ df_cpa_fy.to_csv(csv_stream, index=False, encoding="utf-8")
 csv_stream.seek(0)
 
 uploaded_csv = client.folder(box_folder_id).upload_stream(
-    csv_stream,
-    cpa_csv_filename,
-    overwrite=True
+    file_stream,
+    new_file_name
 )
+
 
 print("\nCPA CSV uploaded successfully!")
 print(f"  File: {uploaded_csv.name}")
